@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';" />
+  <title>Call of Protocol</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --panel: #ffffff;
+      --border: #d6def0;
+      --text: #1d2433;
+      --muted: #59657d;
+      --primary: #174ea6;
+      --primary-soft: #eaf1ff;
+      --danger: #b42318;
+      --success: #0f9d58;
+      --shadow: 0 10px 30px rgba(20, 29, 50, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .app {
+      max-width: 1100px;
+      margin: 40px auto;
+      padding: 24px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+
+    h1, h2, h3 {
+      margin-top: 0;
+    }
+
+    .banner {
+      background: linear-gradient(135deg, var(--primary-soft), #f0f5ff);
+      border: 1px solid #cfe0ff;
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-bottom: 20px;
+      color: var(--text);
+    }
+
+    .badge {
+      display: inline-block;
+      border-radius: 999px;
+      background: #e6f7ee;
+      color: var(--success);
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      margin-bottom: 10px;
+    }
+
+    .two-column {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    input, button, select {
+      width: 100%;
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      font-size: 16px;
+    }
+
+    input {
+      background: #fff;
+      color: var(--text);
+    }
+
+    button {
+      cursor: pointer;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      font-weight: 700;
+    }
+
+    button.secondary {
+      background: #eef3ff;
+      color: var(--primary);
+      border: 1px solid #cfe0ff;
+    }
+
+    .danger {
+      background: var(--danger);
+    }
+
+    .stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .small {
+      font-size: 14px;
+    }
+
+    .status {
+      display: none;
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .status.show {
+      display: block;
+    }
+
+    .status.error {
+      background: #ffe9e7;
+      color: var(--danger);
+      border: 1px solid #ffc0b5;
+    }
+
+    .status.success {
+      background: #eafaf2;
+      color: var(--success);
+      border: 1px solid #b4e8c7;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .attendance-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+
+    .attendance-table th, .attendance-table td {
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      text-align: left;
+    }
+
+    @media (max-width: 700px) {
+      .two-column {
+        grid-template-columns: 1fr;
+      }
+
+      .controls { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="banner">
+      <div class="badge">SECURE STARTER</div>
+      <h1>Call of Protocol</h1>
+      <p class="muted">
+        This demo starter intentionally does not ship with built-in default credentials.
+        Configure the first admin account the first time you open the app.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="two-column">
+        <section>
+          <h2>Admin setup</h2>
+          <div id="setupForm" class="stack">
+            <div>
+              <label for="displayName">Display name</label>
+              <input id="displayName" type="text" value="Admin" placeholder="Admin" />
+            </div>
+
+            <div>
+              <label for="username">Username</label>
+              <input id="username" type="text" value="admin" placeholder="admin" />
+            </div>
+
+            <div>
+              <label for="password">Password</label>
+              <input id="password" type="password" placeholder="Create a password" />
+            </div>
+
+            <div>
+              <label for="confirmPassword">Confirm password</label>
+              <input id="confirmPassword" type="password" placeholder="Repeat password" />
+            </div>
+
+            <button id="setupSubmit">Create admin account</button>
+            <div id="setupStatus" class="status" aria-live="polite"></div>
+          </div>
+        </section>
+
+        <section>
+          <h2>Important notes</h2>
+          <ul class="muted small">
+            <li>Browser-only storage is used for demo purposes.</li>
+            <li>No default admin credential is embedded in this source.</li>
+            <li>Use this to create the initial admin account before adding services, seating, or team users.</li>
+            <li>This is a demo and should not be treated as real security.</li>
+          </ul>
+
+          <div style="margin-top: 18px;">
+            <div class="controls">
+              <button class="secondary" id="resetDemo" type="button">Reset demo account data</button>
+              <button class="secondary" id="createDemoUsers" type="button">Create demo users</button>
+              <button id="seedDemo" type="button">Populate demo data</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:18px;">
+      <h2>Attendance list</h2>
+      <div class="stack">
+        <div style="display:flex;gap:10px;">
+          <input id="searchInput" type="search" placeholder="Search attendees by name or level" />
+          <div style="min-width:160px;">
+            <select id="serviceFilter">
+              <option value="all">All services</option>
+              <option value="1">1st service</option>
+              <option value="2">2nd service</option>
+              <option value="3">3rd service</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button class="secondary" id="exportCsv">Export CSV</button>
+          <button class="secondary" id="printList">Print</button>
+        </div>
+
+        <table class="attendance-table" id="attendanceTable">
+          <thead>
+            <tr><th>Name</th><th>Level</th><th>Service</th><th>Registered by</th></tr>
+          </thead>
+          <tbody id="attendanceBody">
+            <!-- rows injected here -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Storage keys
+    const AUTH_KEY = 'call-of-protocol-demo-auth';
+    const ACTIVE_USER_KEY = 'call-of-protocol-active-user';
+    const DATA_KEY = 'call-of-protocol-data';
+
+    // Simple data model helpers
+    function readUsers() {
+      const raw = localStorage.getItem(AUTH_KEY);
+      if (!raw) return {};
+      try { return JSON.parse(raw); } catch { return {}; }
+    }
+    function writeUsers(users) { localStorage.setItem(AUTH_KEY, JSON.stringify(users)); }
+
+    function readData() {
+      const raw = localStorage.getItem(DATA_KEY);
+      if (!raw) return { services: {}, attendees: [] };
+      try { return JSON.parse(raw); } catch { return { services: {}, attendees: [] }; }
+    }
+    function writeData(data) { localStorage.setItem(DATA_KEY, JSON.stringify(data)); }
+
+    // UI helpers
+    function showStatus(elementId, message, kind) {
+      const statusEl = document.getElementById(elementId);
+      statusEl.textContent = message;
+      statusEl.classList.remove('error', 'success');
+      statusEl.classList.add(kind, 'show');
+      setTimeout(() => statusEl.classList.remove('show'), 4000);
+    }
+
+    // Admin setup
+    function setupAdminAccount() {
+      const displayName = document.getElementById('displayName').value.trim();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+
+      if (!displayName || !username || !password) { showStatus('setupStatus', 'Please complete the admin details.', 'error'); return; }
+      if (password.length < 6) { showStatus('setupStatus', 'Password must be at least 6 characters.', 'error'); return; }
+      if (password !== confirmPassword) { showStatus('setupStatus', 'Passwords do not match.', 'error'); return; }
+
+      const users = readUsers();
+      users[username] = { username, displayName, password, role: 'admin' };
+      writeUsers(users);
+      localStorage.setItem(ACTIVE_USER_KEY, username);
+      showStatus('setupStatus', 'Admin account created successfully.', 'success');
+      // clear password fields
+      document.getElementById('password').value = '';
+      document.getElementById('confirmPassword').value = '';
+    }
+
+    function resetDemoAccountData() {
+      localStorage.removeItem(AUTH_KEY);
+      localStorage.removeItem(ACTIVE_USER_KEY);
+      localStorage.removeItem(DATA_KEY);
+      showStatus('setupStatus', 'Demo account data has been reset.', 'success');
+      renderAttendance();
+    }
+
+    // Demo user creation (adds user01..user05 with a temporary password stored only in localStorage)
+    function createDemoUsers() {
+      const users = readUsers();
+      for (let i = 1; i <= 5; i++) {
+        const id = 'user' + String(i).padStart(2, '0');
+        if (!users[id]) {
+          users[id] = { username: id, displayName: 'User ' + i, password: 'demo123', role: 'user' };
+        }
+      }
+      writeUsers(users);
+      showStatus('setupStatus', 'Demo users created (user01..user05). Password: demo123', 'success');
+    }
+
+    // Seed demo data: services and sample attendees
+    function seedDemoData() {
+      const data = { services: {}, attendees: [] };
+
+      // Create three services with capacities and simple allocations (clergy 5%, leaders 15%, vip 10%, members rest)
+      for (let i = 1; i <= 3; i++) {
+        data.services[String(i)] = {
+          id: String(i),
+          name: (i === 1 ? '1st service' : i === 2 ? '2nd service' : '3rd service'),
+          capacity: 200,
+          allocations: { clergy: 5, leaders: 15, vip: 10, members: 70 }
+        };
+      }
+
+      // Sample attendees
+      const sample = [
+        { name: 'Alice Johnson', level: 'Clergy', service: '1', by: 'admin' },
+        { name: 'Samuel Peters', level: 'Leader', service: '1', by: 'user01' },
+        { name: 'Grace Lee', level: 'VIP', service: '1', by: 'user02' },
+        { name: 'David Brown', level: 'Member', service: '2', by: 'user03' },
+        { name: 'Emma Wilson', level: 'Member', service: '3', by: 'user04' }
+      ];
+
+      data.attendees = sample;
+      writeData(data);
+      showStatus('setupStatus', 'Demo data populated: services + sample attendees.', 'success');
+      renderAttendance();
+    }
+
+    // Attendance rendering and search
+    function renderAttendance(filterText = '', serviceFilter = 'all') {
+      const data = readData();
+      const tbody = document.getElementById('attendanceBody');
+      tbody.innerHTML = '';
+
+      const rows = (data.attendees || []).filter(a => {
+        const txt = (a.name + ' ' + a.level + ' ' + a.by).toLowerCase();
+        const okText = !filterText || txt.includes(filterText.toLowerCase());
+        const okService = serviceFilter === 'all' || a.service === serviceFilter;
+        return okText && okService;
+      });
+
+      if (rows.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4;
+        td.textContent = 'No attendees';
+        td.className = 'muted';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
+
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        const nameTd = document.createElement('td'); nameTd.textContent = r.name; tr.appendChild(nameTd);
+        const levelTd = document.createElement('td'); levelTd.textContent = r.level; tr.appendChild(levelTd);
+        const serviceTd = document.createElement('td'); serviceTd.textContent = (r.service ? r.service + 'st' : ''); tr.appendChild(serviceTd);
+        const byTd = document.createElement('td'); byTd.textContent = r.by || ''; tr.appendChild(byTd);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function exportCsv() {
+      const data = readData();
+      const rows = data.attendees || [];
+      if (rows.length === 0) { showStatus('setupStatus', 'No attendees to export.', 'error'); return; }
+      const header = ['Name','Level','Service','RegisteredBy'];
+      const csv = [header.join(',')].concat(rows.map(r => {
+        return [escapeCsv(r.name), escapeCsv(r.level), escapeCsv(r.service), escapeCsv(r.by)].join(',');
+      })).join('\n');
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'attendance.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showStatus('setupStatus', 'CSV export started.', 'success');
+    }
+
+    function escapeCsv(value) {
+      if (value == null) return '';
+      const s = String(value);
+      if (s.includes(',') || s.includes('\"') || s.includes('\n')) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }
+
+    // Event wiring
+    document.getElementById('setupSubmit').addEventListener('click', setupAdminAccount);
+    document.getElementById('resetDemo').addEventListener('click', resetDemoAccountData);
+    document.getElementById('createDemoUsers').addEventListener('click', createDemoUsers);
+    document.getElementById('seedDemo').addEventListener('click', seedDemoData);
+
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      renderAttendance(e.target.value, document.getElementById('serviceFilter').value);
+    });
+    document.getElementById('serviceFilter').addEventListener('change', () => {
+      renderAttendance(document.getElementById('searchInput').value, document.getElementById('serviceFilter').value);
+    });
+
+    document.getElementById('exportCsv').addEventListener('click', exportCsv);
+    document.getElementById('printList').addEventListener('click', () => window.print());
+
+    // Initial render
+    renderAttendance();
+  </script>
+</body>
+</html>
