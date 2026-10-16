@@ -1,6 +1,6 @@
 # Call of Protocol
 
-**[YOUR CHURCH NAME]** protocol and seating web app. It organizes attendance and seating by hierarchy and runs as a free demo on GitHub Pages, with no installs, no backend and no hosting fees.
+**[PHANERO]** protocol and seating web app. It organizes attendance and seating by hierarchy and runs as a free demo on GitHub Pages, with no installs, no backend and no hosting fees.
 
 **Live demo:** https://YOUR-USERNAME.github.io/call-of-protocol/
 
