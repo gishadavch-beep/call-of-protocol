@@ -130,7 +130,7 @@
 
       </div>
 
-      <div class="panel"><div class="row"><button id="createUsers" class="secondary">Create demo users</button><button id="resetAll" class="secondary">Reset all</button><button id="addSampleSeats">Add sample seats</button></div></div>
+      <div class="panel"><div class="row"><button id="createUsers" class="secondary">Create demo users</button><button id="resetAll" class="secondary">Reset all</button><button id="addSampleSeats" class="secondary">Add sample seats</button></div></div>
     </div>
 
     <script type="module">
@@ -336,6 +336,58 @@
 
       async function addSampleSeats(){ const data = await seedDefaultData(); const svc = data.services['2']; for(let i=0;i<10;i++){ if(!svc.seats.members[i]){ svc.seats.members[i]={name:'Member '+(i+1),by:'user03'}; data.attendees.push({name:'Member '+(i+1),level:'Member',service:'2',by:'user03',seatIndex:i}); }} await writeJSON(DATA_KEY, data); renderAll(); alert('Added sample seats'); }
 
+      // New: automatically pre-seed demo for presentations when repo is empty
+      // This creates an admin (admin/admin123), demo users and sample attendees, but only if there are no users and no attendees yet.
+      async function autoSeedForPresentation(){
+        try {
+          const users = readUsersLocal();
+          const data = await readJSON(DATA_KEY, { services: {}, attendees: [] });
+          const hasUsers = Object.keys(users).length > 0;
+          const hasAttendees = (data.attendees || []).length > 0;
+          if (!hasUsers && !hasAttendees) {
+            // create admin and demo users
+            users['admin'] = { username: 'admin', displayName: 'Admin', password: 'admin123', role: 'admin' };
+            for (let i = 1; i <= 5; i++) {
+              const id = 'user' + String(i).padStart(2, '0');
+              users[id] = { username: id, displayName: 'User ' + i, password: 'demo123', role: 'user' };
+            }
+            writeUsersLocal(users);
+            // seed sample attendees
+            await seedDefaultData();
+            const data2 = await readJSON(DATA_KEY, { services: {}, attendees: [] });
+            const sample = [
+              { name: 'Alice Johnson', level: 'Clergy', service: '1', by: 'admin' },
+              { name: 'Samuel Peters', level: 'Leader', service: '1', by: 'user01' },
+              { name: 'Grace Lee', level: 'VIP', service: '1', by: 'user02' },
+              { name: 'David Brown', level: 'Member', service: '2', by: 'user03' },
+              { name: 'Emma Wilson', level: 'Member', service: '3', by: 'user04' }
+            ];
+            for (const item of sample) {
+              const keyMap = { Clergy: 'clergy', Leader: 'leaders', VIP: 'vip', Member: 'members' };
+              const key = keyMap[item.level];
+              const svc = data2.services[item.service];
+              // ensure seat arrays exist and have correct length
+              const totals = calcTotals(svc);
+              for (const k of Object.keys(svc.seats)) {
+                if (!Array.isArray(svc.seats[k])) svc.seats[k] = new Array(totals[k]).fill(null);
+              }
+              const idx = svc.seats[key].findIndex(s => s === null || s === undefined);
+              if (idx >= 0) {
+                svc.seats[key][idx] = { name: item.name, by: item.by };
+                data2.attendees.push({ name: item.name, level: item.level, service: item.service, by: item.by, seatIndex: idx });
+              }
+            }
+            await writeJSON(DATA_KEY, data2);
+            // mark admin as active
+            localStorage.setItem(ACTIVE_KEY, 'admin');
+            // small delay then re-render
+            setTimeout(() => { renderAuthState(); alert('Demo pre-seeded: admin/admin123 and sample attendees created.'); }, 400);
+          }
+        } catch (e) {
+          console.error('autoSeed error', e);
+        }
+      }
+
       // Render auth state
       function renderAuthState(){ const user = currentUserLocal(); if(user){ document.getElementById('authPanel').classList.add('hidden'); document.getElementById('appPanel').classList.remove('hidden'); } else { document.getElementById('authPanel').classList.remove('hidden'); document.getElementById('appPanel').classList.add('hidden'); } renderAll(); }
 
@@ -363,7 +415,7 @@
       document.getElementById('serviceFilter').addEventListener('change', renderAttendance);
 
       // Initialize
-      seedDefaultData().then(()=>renderAuthState());
+      seedDefaultData().then(async ()=>{ await autoSeedForPresentation(); renderAuthState(); });
 
     </script>
   </body>
