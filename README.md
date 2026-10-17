@@ -8,75 +8,29 @@
 
 | Login | Seating map | Admin settings |
 |---|---|---|
-| ![Login](screenshots/login.png) | ![Seating map](screenshots/map.png) | ![Admin settings](screenshots/admin.png) |
+| ![Login](screenshots/login.svg) | ![Seating map](screenshots/map.svg) | ![Admin settings](screenshots/admin.svg) |
+
+## Firebase integration
+
+This starter can optionally use Firebase (Firestore) to store shared data across devices. To enable:
+
+1. Create a Firebase project and Firestore database (follow Firebase docs).
+2. In this app, open the Firebase panel and paste your config object (the small JSON with apiKey, projectId, authDomain, etc.).
+3. Click "Save & Initialize" — the app will attempt to initialize Firestore and migrate local demo data into the project.
+
+Notes:
+- This starter switches only the data layer to Firestore (services, seats, attendees). Authentication remains the local demo accounts unless you implement Firebase Auth.
+- Do NOT put production credentials in a public repo. Use environment-specific projects for demos.
 
 ## Features
 
-- **Hierarchy-based seating:** Clergy, Leaders, VIPs and Members, in that order of priority.
-- **Three services:** 1st, 2nd and 3rd service, each with its own capacity and its own seat allocation per level.
-- **Adjustable capacity:** 100 to 1,000 seats per service, split across the hierarchy by percentage.
-- **Live "seats left" counters** for every level.
-- **Organizational seating map:** filled blocks are taken seats, hollow blocks are free. Hover a filled block to see the name.
-- **Full-level protection:** registration is blocked when a level is full.
-- **Attendance list:** search, export to CSV and print.
-- **Logins:** 1 admin and 29 team user accounts (30 in total).
+- Hierarchy-based seating, three services, adjustable capacities, live counters, seating map, attendance list, CSV export, print.
 
-## Roles
+## How to deploy
 
-| Action | Admin | User |
-|---|---|---|
-| Log in | Yes | Yes |
-| View seats left, seating map and attendance list | Yes | Yes |
-| Register attendees | Yes | Yes |
-| Change service names, capacity and allocations | Yes | No |
-| Remove attendees or clear a service | Yes | No |
-| Manage accounts (names and passwords) | Yes | No |
-
-Each registration records which account made it.
-
-## For the protocol team: how to log in
-
-1. Open the live demo link above on your phone or computer.
-2. Enter the username and password the admin gave you.
-3. Choose the service tab (1st, 2nd or 3rd).
-4. To register someone, type their name, choose their hierarchy level and service, then tap **Register**.
-5. When you are done, tap **Logout**.
-
-If a level shows no seats left, tell the admin. Only the admin can change allocations.
-
-## Logins
-
-- Admin username: `admin`
-- Team usernames: `user01` to `user29`
-
-Default passwords are set in the `defaultAccounts()` function in `index.html`. **Change them before sharing the app.** The admin can edit display names and passwords in the Accounts panel after logging in.
-
-## How to deploy on GitHub Pages
-
-1. Create a public repository named `call-of-protocol`.
-2. Add `index.html` and `README.md`.
-3. Go to **Settings → Pages**.
-4. Under **Build and deployment**, choose **Deploy from a branch**, select `main` and `/ (root)`, and click Save.
-5. After a minute or two the app is live at `https://YOUR-USERNAME.github.io/call-of-protocol/`.
-
-## Adding screenshots
-
-1. In the repository, click **Add file → Upload files**.
-2. Drag in your images, named `login.png`, `map.png` and `admin.png`, and make sure they go into a folder called `screenshots` (typing `screenshots/` before the file name on a new file creates the folder).
-3. Commit. The images then appear in the Screenshots section above.
-
-## Known limitations (demo version)
-
-- **Data is stored per device.** Attendance and password changes are saved in the browser where they were made, so they are not shared between phones or computers.
-- **Login is not real security.** There is no server, and the default credentials are visible in the page source. This is suitable for a demo only.
-
-## Roadmap
-
-- Connect a free backend (for example Firebase or Supabase) for shared live data and secure logins.
-- Seat numbering and printable seating charts.
-- Check-in and attendance reports per service.
-- Custom roles and permissions.
+1. Push to GitHub and enable GitHub Pages (Settings → Pages → main branch → root).
+2. Optionally paste your Firebase config to use Firestore for shared data.
 
 ## Tech
 
-Plain HTML, CSS and JavaScript in a single file. No frameworks and no build step.
+Single-file HTML app. Firebase integration uses the modular Firebase v9 CDN modules when configured.
