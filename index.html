@@ -35,6 +35,7 @@
       table{width:100%;border-collapse:collapse}
       th,td{border:1px solid var(--border);padding:8px}
       .hidden{display:none}
+      .row{display:flex;gap:10px;flex-wrap:wrap}
       @media(max-width:720px){.counter-grid{grid-template-columns:repeat(2,1fr)}}
     </style>
   </head>
@@ -82,7 +83,7 @@
       <div id="appPanel" class="panel hidden">
         <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">
           <div><strong id="whoLabel">User</strong><div class="muted small" id="roleLabel">role</div></div>
-          <div><button id="logoutBtn" class="secondary">Logout</button></div>
+          <div class="row"><button id="presentationBtn" class="secondary">Presentation mode</button><button id="logoutBtn" class="secondary">Logout</button></div>
         </div>
 
         <div id="serviceTabs" class="tabs" style="margin-bottom:12px"></div>
@@ -134,73 +135,56 @@
     </div>
 
     <script type="module">
-      // Modular Firebase integration (optional). If you paste your Firebase config into the textarea and click Save,
-      // this module will try to initialize Firebase and switch data storage to Firestore. Auth remains local unless
-      // you choose to implement Firebase Auth login flows.
-
-      import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
-      import { getFirestore, doc, getDoc, setDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
-
       const FIREBASE_CONFIG_KEY = 'cop_firebase_config';
-      const FIRESTORE_DOC = 'call-of-protocol/main'; // collection/doc path: collection 'call-of-protocol' doc 'main'
       let firestore = null;
       let useFirestore = false;
+      const AUTH_KEY = 'call-of-protocol-demo-auth';
+      const DATA_KEY = 'call-of-protocol-data';
+      const ACTIVE_KEY = 'call-of-protocol-active-user';
+      let activeService = '1';
 
-      // Local storage helpers (fallback)
-      function readLocal(key, fallback) { try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; } }
+      function readLocal(key, fallback) {
+        try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
+      }
       function writeLocal(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
+      function readUsersLocal() { try { return JSON.parse(localStorage.getItem(AUTH_KEY) || '{}'); } catch { return {}; } }
+      function writeUsersLocal(u) { localStorage.setItem(AUTH_KEY, JSON.stringify(u)); }
+      function currentUserLocal() { const users = readUsersLocal(); const name = localStorage.getItem(ACTIVE_KEY); return users[name] || null; }
 
-      async function readBackend(key, fallback) {
-        if (useFirestore && firestore) {
-          try {
-            const ref = doc(firestore, 'call-of-protocol', 'main');
-            const snap = await getDoc(ref);
-            if (!snap.exists()) return fallback;
-            const data = snap.data();
-            return key in data ? data[key] : fallback;
-          } catch (e) {
-            console.error('Firestore read error', e); return readLocal(key, fallback);
-          }
-        }
-        return readLocal(key, fallback);
+      async function readJSON(key, fallback) { return useFirestore && firestore ? readRemote(key, fallback) : readLocal(key, fallback); }
+      async function writeJSON(key, value) { return useFirestore && firestore ? writeRemote(key, value) : writeLocal(key, value); }
+
+      async function readRemote(key, fallback) {
+        try {
+          const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js');
+          const ref = doc(firestore, 'call-of-protocol', 'main');
+          const snap = await getDoc(ref);
+          if (!snap.exists()) return fallback;
+          const data = snap.data();
+          return key in data ? data[key] : fallback;
+        } catch (e) { console.error('Firestore read error', e); return readLocal(key, fallback); }
       }
 
-      async function writeBackend(key, value) {
-        if (useFirestore && firestore) {
-          try {
-            const ref = doc(firestore, 'call-of-protocol', 'main');
-            // merge update
-            await setDoc(ref, { [key]: value }, { merge: true });
-            return;
-          } catch (e) {
-            console.error('Firestore write error', e); return writeLocal(key, value);
-          }
-        }
-        return writeLocal(key, value);
+      async function writeRemote(key, value) {
+        try {
+          const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js');
+          const ref = doc(firestore, 'call-of-protocol', 'main');
+          await setDoc(ref, { [key]: value }, { merge: true });
+        } catch (e) { console.error('Firestore write error', e); return writeLocal(key, value); }
       }
 
-      // Expose simple global helpers for the rest of the app to call (they use localStorage by default)
-      window.storage = {
-        readJSON: (k, fallback) => readBackend(k, fallback),
-        writeJSON: (k, v) => writeBackend(k, v)
-      };
-
-      // Initialize UI wiring and handlers (app logic will call window.storage)
-      // Save Firebase config button
       document.getElementById('saveFirebase').addEventListener('click', async () => {
         const raw = document.getElementById('firebaseConfig').value.trim();
         if (!raw) { document.getElementById('firebaseStatus').textContent = 'Paste a Firebase config object first'; return; }
         try {
+          const { initializeApp } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js');
+          const { getFirestore } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js');
           const cfg = JSON.parse(raw);
           writeLocal(FIREBASE_CONFIG_KEY, cfg);
-          // Initialize
           const app = initializeApp(cfg);
           firestore = getFirestore(app);
           useFirestore = true;
           document.getElementById('firebaseStatus').textContent = 'Initialized Firestore — data will now sync to your Firebase project.';
-          // Kick the main app to reload storage state
-          await migrateLocalToFirestoreIfNeeded();
-          window.location.reload();
         } catch (e) {
           console.error(e);
           document.getElementById('firebaseStatus').textContent = 'Invalid config or initialization failed (check console).';
@@ -213,63 +197,22 @@
         document.getElementById('firebaseStatus').textContent = 'Cleared';
       });
 
-      // On load, if config present initialize silently
-      (async function tryInitFromStored() {
-        const cfg = readLocal(FIREBASE_CONFIG_KEY, null);
-        if (!cfg) return;
-        try {
-          const app = initializeApp(cfg);
-          firestore = getFirestore(app);
-          useFirestore = true;
-          document.getElementById('firebaseStatus').textContent = 'Firestore available (using remote storage)';
-        } catch (e) { console.error('firestore init failed', e); }
-      })();
-
-      // If user enables Firestore, we offer to migrate local data (basic merge)
-      async function migrateLocalToFirestoreIfNeeded() {
-        if (!useFirestore || !firestore) return;
-        try {
-          const ref = doc(firestore, 'call-of-protocol', 'main');
-          const snap = await getDoc(ref);
-          const remote = snap.exists() ? snap.data() : {};
-          const localAuth = readLocal('call-of-protocol-demo-auth', {});
-          const localData = readLocal('call-of-protocol-data', { services: {}, attendees: [] });
-          const merged = Object.assign({}, remote, { auth: remote.auth || localAuth, data: remote.data || localData });
-          await setDoc(ref, merged, { merge: true });
-        } catch (e) { console.error('migrate error', e); }
-      }
-
-      // App-level code uses window.storage.readJSON/writeJSON
-
-      // --- App logic (adapted from previous local-only app). ---
-
-      const AUTH_KEY = 'call-of-protocol-demo-auth';
-      const DATA_KEY = 'call-of-protocol-data';
-      const ACTIVE_KEY = 'call-of-protocol-active-user';
-
-      async function readJSON(key, fallback) { return await window.storage.readJSON(key, fallback); }
-      async function writeJSON(key, value) { return await window.storage.writeJSON(key, value); }
-
-      function currentUserLocal() { const users = JSON.parse(localStorage.getItem(AUTH_KEY) || '{}'); const name = localStorage.getItem(ACTIVE_KEY); return users[name] || null; }
-
-      async function currentUser() { // prefer Firebase auth if available in future; for now keep local accounts
-        return currentUserLocal();
-      }
-
-      // Basic UI functions reusing previous structure but using async storage calls
-      function setStatus(id, msg, kind) { const el=document.getElementById(id); el.textContent=msg; if(kind==='success') el.classList.add('success'); else if(kind==='error') el.classList.add('error'); setTimeout(()=>el.textContent='',4000); }
-
-      // Seed defaults (local structure) and ensure data shape
       async function seedDefaultData() {
-        const data = await readJSON(DATA_KEY, { services: {}, attendees: [] });
+        const current = await readJSON(DATA_KEY, { services: {}, attendees: [] });
+        const data = current || { services: {}, attendees: [] };
         for (let s = 1; s <= 3; s++) {
           if (!data.services[s]) {
             data.services[s] = {
               id: String(s),
-              name: s===1?'1st service':s===2?'2nd service':'3rd service',
+              name: s===1 ? '1st service' : s===2 ? '2nd service' : '3rd service',
               capacity: 200,
-              allocations: { clergy:5, leaders:15, vip:10, members:70 },
-              seats: { clergy: new Array(10).fill(null), leaders:new Array(30).fill(null), vip:new Array(20).fill(null), members:new Array(140).fill(null) }
+              allocations: { clergy: 5, leaders: 15, vip: 10, members: 70 },
+              seats: {
+                clergy: new Array(10).fill(null),
+                leaders: new Array(30).fill(null),
+                vip: new Array(20).fill(null),
+                members: new Array(140).fill(null)
+              }
             };
           }
         }
@@ -277,146 +220,502 @@
         return data;
       }
 
-      // Simple users local helper
-      function readUsersLocal() { try { return JSON.parse(localStorage.getItem(AUTH_KEY) || '{}'); } catch { return {}; } }
-      function writeUsersLocal(u) { localStorage.setItem(AUTH_KEY, JSON.stringify(u)); }
+      function calcTotals(service) {
+        const cap = Number(service.capacity || 200);
+        const a = service.allocations || { clergy:5, leaders:15, vip:10, members:70 };
+        const clergy = Math.floor(cap * (a.clergy / 100));
+        const leaders = Math.floor(cap * (a.leaders / 100));
+        const vip = Math.floor(cap * (a.vip / 100));
+        return { clergy, leaders, vip, members: Math.max(cap - clergy - leaders - vip, 0) };
+      }
 
-      // UI wiring re-implemented with async storage
-      const authPanel = document.getElementById('authPanel');
-      const appPanel = document.getElementById('appPanel');
-      const whoLabel = document.getElementById('whoLabel');
-      const roleLabel = document.getElementById('roleLabel');
-      let activeService = '1';
+      function setStatus(id, msg, kind) {
+        const el = document.getElementById(id);
+        el.textContent = msg;
+        el.classList.remove('muted');
+        el.classList.add(kind === 'error' ? 'error' : 'success');
+        setTimeout(() => { el.textContent = ''; el.classList.remove('error','success'); el.classList.add('muted'); }, 2500);
+      }
 
       function renderTabs(data) {
-        const tabs = document.getElementById('serviceTabs'); tabs.innerHTML='';
-        for (const id of ['1','2','3']){
-          const s = data.services[id] || { name: id+'st service' };
-          const b = document.createElement('button'); b.type='button'; b.textContent = s.name; b.className = 'tab'+(activeService===id? ' active':''); b.addEventListener('click', ()=>{ activeService=id; renderAll(); }); tabs.appendChild(b);
+        const tabs = document.getElementById('serviceTabs'); tabs.innerHTML = '';
+        for (const id of ['1','2','3']) {
+          const svc = data.services[id] || { name: id + 'st service' };
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = svc.name;
+          btn.className = 'tab' + (activeService === id ? ' active' : '');
+          btn.addEventListener('click', () => { activeService = id; renderAll(); });
+          tabs.appendChild(btn);
         }
       }
 
-      function calcTotals(service){ const cap = Number(service.capacity||200); const a = service.allocations||{clergy:5,leaders:15,vip:10,members:70}; const cler=Math.floor(cap*(a.clergy/100)); const lead=Math.floor(cap*(a.leaders/100)); const vip=Math.floor(cap*(a.vip/100)); return {clergy:cler, leaders:lead, vip:vip, members: Math.max(cap-cler-lead-vip,0)}; }
+      function renderServiceForm(data) {
+        const svc = data.services[activeService];
+        document.getElementById('serviceName').value = svc.name;
+        document.getElementById('serviceCapacity').value = svc.capacity;
+        document.getElementById('pctClergy').value = svc.allocations.clergy;
+        document.getElementById('pctLeaders').value = svc.allocations.leaders;
+        document.getElementById('pctVip').value = svc.allocations.vip;
+      }
 
-      async function renderAll(){ const data = await seedDefaultData(); renderTabs(data); renderServiceForm(data); await renderCounters(data); await renderAttendance(); await renderMap(data); const user = await currentUser(); whoLabel.textContent = user?user.displayName:'Guest'; roleLabel.textContent = user?('Role: '+user.role):''; }
+      async function renderCounters(data) {
+        const svc = data.services[activeService];
+        const totals = calcTotals(svc);
+        const seatCounts = {
+          clergy: (svc.seats.clergy || []).filter(Boolean).length,
+          leaders: (svc.seats.leaders || []).filter(Boolean).length,
+          vip: (svc.seats.vip || []).filter(Boolean).length,
+          members: (svc.seats.members || []).filter(Boolean).length
+        };
+        document.getElementById('leftClergy').textContent = Math.max(totals.clergy - seatCounts.clergy, 0);
+        document.getElementById('leftLeaders').textContent = Math.max(totals.leaders - seatCounts.leaders, 0);
+        document.getElementById('leftVip').textContent = Math.max(totals.vip - seatCounts.vip, 0);
+        document.getElementById('leftMembers').textContent = Math.max(totals.members - seatCounts.members, 0);
+      }
 
-      function renderServiceForm(data){ const svc = data.services[activeService]; document.getElementById('serviceName').value = svc.name; document.getElementById('serviceCapacity').value = svc.capacity; document.getElementById('pctClergy').value = svc.allocations.clergy; document.getElementById('pctLeaders').value = svc.allocations.leaders; document.getElementById('pctVip').value = svc.allocations.vip; }
+      function renderMap(data) {
+        const svc = data.services[activeService];
+        const totals = calcTotals(svc);
+        const container = document.getElementById('mapContainer');
+        container.innerHTML = '';
+        const levels = [
+          { key: 'clergy', label: 'Clergy', total: totals.clergy },
+          { key: 'leaders', label: 'Leaders', total: totals.leaders },
+          { key: 'vip', label: 'VIP', total: totals.vip },
+          { key: 'members', label: 'Members', total: totals.members }
+        ];
 
-      async function renderCounters(data){ data = data || await seedDefaultData(); const svc = data.services[activeService]; const totals = calcTotals(svc); const counts = { clergy: svc.seats.clergy.filter(Boolean).length, leaders: svc.seats.leaders.filter(Boolean).length, vip: svc.seats.vip.filter(Boolean).length, members: svc.seats.members.filter(Boolean).length }; document.getElementById('leftClergy').textContent = Math.max(totals.clergy - counts.clergy,0); document.getElementById('leftLeaders').textContent = Math.max(totals.leaders - counts.leaders,0); document.getElementById('leftVip').textContent = Math.max(totals.vip - counts.vip,0); document.getElementById('leftMembers').textContent = Math.max(totals.members - counts.members,0); }
+        levels.forEach(level => {
+          const box = document.createElement('div');
+          box.className = 'level-box';
+          const h4 = document.createElement('h4');
+          h4.textContent = `${level.label} (${level.total})`;
+          box.appendChild(h4);
 
-      async function renderMap(data){ data = data || await seedDefaultData(); const svc = data.services[activeService]; const totals = calcTotals(svc); const container = document.getElementById('mapContainer'); container.innerHTML=''; const levels = [{k:'clergy',label:'Clergy',total:totals.clergy},{k:'leaders',label:'Leaders',total:totals.leaders},{k:'vip',label:'VIP',total:totals.vip},{k:'members',label:'Members',total:totals.members}]; for(const lvl of levels){ const box=document.createElement('div'); box.className='level-box'; const h=document.createElement('h4'); h.textContent = lvl.label + ' ('+lvl.total+')'; box.appendChild(h); const seats=document.createElement('div'); seats.className='seats'; const arr = svc.seats[lvl.k] || new Array(lvl.total).fill(null); for(let i=0;i<lvl.total;i++){ const seat=document.createElement('div'); const item = arr[i]; seat.className='seat'+(item? ' taken':'') + ((lvl.k==='vip' && !item)? ' vip-free':''); seat.title = item? (item.name + ' — by ' + item.by): 'Open'; seat.textContent = item? '•':''; seats.appendChild(seat); } box.appendChild(seats); container.appendChild(box); } }
-
-      async function renderAttendance(){ const data = await readJSON(DATA_KEY, { services:{}, attendees:[] }); const tbody = document.getElementById('attendanceBody'); tbody.innerHTML=''; const filter = (document.getElementById('searchInput').value||'').toLowerCase(); const svcFilter = document.getElementById('serviceFilter').value; const rows = (data.attendees||[]).filter(a=>{ const txt=(a.name+' '+a.level+' '+a.by).toLowerCase(); const okText = !filter || txt.includes(filter); const okSvc = svcFilter==='all' || a.service===svcFilter; return okText && okSvc; }); if(!rows.length){ const tr=document.createElement('tr'); const td=document.createElement('td'); td.colSpan=5; td.textContent='No attendees'; td.className='muted'; tr.appendChild(td); tbody.appendChild(tr); return; } for(const r of rows){ const tr=document.createElement('tr'); tr.innerHTML = '<td>'+escapeHtml(r.name)+'</td><td>'+escapeHtml(r.level)+'</td><td>'+escapeHtml(serviceLabel(r.service))+'</td><td>'+escapeHtml(r.by)+'</td><td>'+(currentUserLocal() && currentUserLocal().role==='admin'? '<button class="secondary">Remove</button>':'—')+'</td>'; tbody.appendChild(tr); if(currentUserLocal() && currentUserLocal().role==='admin'){ tr.querySelector('button')?.addEventListener('click', ()=>{ removeAttendee(r.name, r.level, r.service); }); } } }
-
-      function serviceLabel(id){ return id==='1'?'1st service':id==='2'?'2nd service':'3rd service'; }
-      function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-      async function saveService(){ const data = await seedDefaultData(); const svc = data.services[activeService]; const name = document.getElementById('serviceName').value.trim(); let cap = Number(document.getElementById('serviceCapacity').value||200); cap = Math.min(Math.max(cap,100),1000); const c = Number(document.getElementById('pctClergy').value||0); const l = Number(document.getElementById('pctLeaders').value||0); const v = Number(document.getElementById('pctVip').value||0); if(c+l+v>100){ setStatus('serviceStatus','Percentages exceed 100','error'); return; } svc.name = name||svc.name; svc.capacity = cap; svc.allocations = { clergy:c, leaders:l, vip:v, members: 100-(c+l+v) }; const totals = calcTotals(svc); for(const key of ['clergy','leaders','vip','members']){ const arr = svc.seats[key]||[]; if(arr.length<totals[key]) svc.seats[key] = arr.concat(new Array(totals[key]-arr.length).fill(null)); else if(arr.length>totals[key]) svc.seats[key] = arr.slice(0,totals[key]); } await writeJSON(DATA_KEY, data); setStatus('serviceStatus','Saved','success'); await renderAll(); }
-
-      async function clearService(){ const user = currentUserLocal(); if(!user||user.role!=='admin'){ setStatus('serviceStatus','Admin only','error'); return; } if(!confirm('Clear all attendees for this service?')) return; const data = await seedDefaultData(); const svc = data.services[activeService]; for(const k of ['clergy','leaders','vip','members']) svc.seats[k] = new Array(svc.seats[k].length).fill(null); data.attendees = (data.attendees||[]).filter(a=>a.service!==activeService); await writeJSON(DATA_KEY, data); setStatus('serviceStatus','Cleared','success'); await renderAll(); }
-
-      async function register(){ const user = currentUserLocal(); if(!user){ setStatus('regStatus','Login first','error'); return; } const name = document.getElementById('regName').value.trim(); const level = document.getElementById('regLevel').value; const service = document.getElementById('regService').value; if(!name){ setStatus('regStatus','Enter name','error'); return; } const data = await seedDefaultData(); const svc = data.services[service]; const map = { Clergy:'clergy', Leader:'leaders', VIP:'vip', Member:'members' }; const key = map[level]; const totals = calcTotals(svc); const arr = svc.seats[key]||[]; const freeIdx = arr.findIndex(x=>x===null||x===undefined); if(freeIdx===-1){ setStatus('regStatus', level+' is full', 'error'); return; } arr[freeIdx] = { name, by: user.username }; svc.seats[key] = arr; data.attendees.push({ name, level, service, by: user.username, seatIndex: freeIdx }); await writeJSON(DATA_KEY, data); document.getElementById('regName').value=''; setStatus('regStatus', name+' registered','success'); await renderAll(); }
-
-      async function removeAttendee(name, level, service){ const user = currentUserLocal(); if(!user||user.role!=='admin'){ alert('Only admin'); return; } const data = await seedDefaultData(); const svc = data.services[service]; const map = { Clergy:'clergy', Leader:'leaders', VIP:'vip', Member:'members' }; const key = map[level]; const idx = svc.seats[key].findIndex(s=>s && s.name===name); if(idx>=0) svc.seats[key][idx]=null; data.attendees = data.attendees.filter(a=>!(a.name===name && a.level===level && a.service===service)); await writeJSON(DATA_KEY, data); await renderAll(); }
-
-      async function exportCsv(){ const data = await readJSON(DATA_KEY, { services:{}, attendees:[] }); const rows = data.attendees || []; if(!rows.length){ setStatus('serviceStatus','No attendees','error'); return; } const header=['Name','Level','Service','By']; const csv = [header.join(',')].concat(rows.map(r=>['"'+r.name.replace(/"/g,'""')+'"','"'+r.level+'"','"'+r.service+'"','"'+r.by+'"'].join(','))).join('\n'); const blob = new Blob([csv],{type:'text/csv'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='attendance.csv'; a.click(); URL.revokeObjectURL(url); }
-
-      // Simple user creation/wrapping local only for demo
-      function createDemoUsers(){ const users = readUsersLocal(); for(let i=1;i<=5;i++){ const id='user'+String(i).padStart(2,'0'); if(!users[id]) users[id]={username:id,displayName:'User '+i,password:'demo123',role:'user'} } writeUsersLocal(users); setStatus('loginStatus','Demo users created (user01..user05) password demo123','success'); }
-
-      function setupAdmin(){ const d=document.getElementById('displayName').value.trim(); const u=document.getElementById('username').value.trim(); const p=document.getElementById('password').value; const cp=document.getElementById('confirmPassword').value; if(!d||!u||!p){ setStatus('setupStatus','Complete fields','error'); return; } if(p.length<6){ setStatus('setupStatus','Password too short','error'); return; } if(p!==cp){ setStatus('setupStatus','Passwords do not match','error'); return; } const users = readUsersLocal(); users[u]={username:u,displayName:d,password:p,role:'admin'}; writeUsersLocal(users); localStorage.setItem(ACTIVE_KEY,u); setStatus('setupStatus','Admin created','success'); renderAuthState(); }
-
-      function login(){ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; const users = readUsersLocal(); if(!users[u]||users[u].password!==p){ setStatus('loginStatus','Invalid credentials','error'); return; } localStorage.setItem(ACTIVE_KEY,u); setStatus('loginStatus','Logged in','success'); renderAuthState(); }
-
-      function demoLogin(){ const users = readUsersLocal(); if(!users.admin){ users.admin={username:'admin',displayName:'Admin',password:'admin123',role:'admin'}; writeUsersLocal(users); } localStorage.setItem(ACTIVE_KEY,'admin'); renderAuthState(); alert('Admin created with password admin123 — change it in accounts'); }
-
-      function logout(){ localStorage.removeItem(ACTIVE_KEY); renderAuthState(); }
-
-      async function resetAll(){ if(!confirm('Reset demo data?')) return; localStorage.removeItem(AUTH_KEY); localStorage.removeItem(DATA_KEY); localStorage.removeItem(ACTIVE_KEY); setStatus('setupStatus','Reset complete','success'); seedDefaultData(); renderAuthState(); }
-
-      async function addSampleSeats(){ const data = await seedDefaultData(); const svc = data.services['2']; for(let i=0;i<10;i++){ if(!svc.seats.members[i]){ svc.seats.members[i]={name:'Member '+(i+1),by:'user03'}; data.attendees.push({name:'Member '+(i+1),level:'Member',service:'2',by:'user03',seatIndex:i}); }} await writeJSON(DATA_KEY, data); renderAll(); alert('Added sample seats'); }
-
-      // New: automatically pre-seed demo for presentations when repo is empty
-      // This creates an admin (admin/admin123), demo users and sample attendees, but only if there are no users and no attendees yet.
-      async function autoSeedForPresentation(){
-        try {
-          const users = readUsersLocal();
-          const data = await readJSON(DATA_KEY, { services: {}, attendees: [] });
-          const hasUsers = Object.keys(users).length > 0;
-          const hasAttendees = (data.attendees || []).length > 0;
-          if (!hasUsers && !hasAttendees) {
-            // create admin and demo users
-            users['admin'] = { username: 'admin', displayName: 'Admin', password: 'admin123', role: 'admin' };
-            for (let i = 1; i <= 5; i++) {
-              const id = 'user' + String(i).padStart(2, '0');
-              users[id] = { username: id, displayName: 'User ' + i, password: 'demo123', role: 'user' };
-            }
-            writeUsersLocal(users);
-            // seed sample attendees
-            await seedDefaultData();
-            const data2 = await readJSON(DATA_KEY, { services: {}, attendees: [] });
-            const sample = [
-              { name: 'Alice Johnson', level: 'Clergy', service: '1', by: 'admin' },
-              { name: 'Samuel Peters', level: 'Leader', service: '1', by: 'user01' },
-              { name: 'Grace Lee', level: 'VIP', service: '1', by: 'user02' },
-              { name: 'David Brown', level: 'Member', service: '2', by: 'user03' },
-              { name: 'Emma Wilson', level: 'Member', service: '3', by: 'user04' }
-            ];
-            for (const item of sample) {
-              const keyMap = { Clergy: 'clergy', Leader: 'leaders', VIP: 'vip', Member: 'members' };
-              const key = keyMap[item.level];
-              const svc = data2.services[item.service];
-              // ensure seat arrays exist and have correct length
-              const totals = calcTotals(svc);
-              for (const k of Object.keys(svc.seats)) {
-                if (!Array.isArray(svc.seats[k])) svc.seats[k] = new Array(totals[k]).fill(null);
-              }
-              const idx = svc.seats[key].findIndex(s => s === null || s === undefined);
-              if (idx >= 0) {
-                svc.seats[key][idx] = { name: item.name, by: item.by };
-                data2.attendees.push({ name: item.name, level: item.level, service: item.service, by: item.by, seatIndex: idx });
-              }
-            }
-            await writeJSON(DATA_KEY, data2);
-            // mark admin as active
-            localStorage.setItem(ACTIVE_KEY, 'admin');
-            // small delay then re-render
-            setTimeout(() => { renderAuthState(); alert('Demo pre-seeded: admin/admin123 and sample attendees created.'); }, 400);
+          const seats = document.createElement('div');
+          seats.className = 'seats';
+          const arr = svc.seats[level.key] || [];
+          for (let i = 0; i < level.total; i++) {
+            const seat = document.createElement('div');
+            const item = arr[i];
+            seat.className = 'seat' + (item ? ' taken' : '') + (level.key === 'vip' && !item ? ' vip-free' : '');
+            seat.title = item ? `${item.name} — ${item.by}` : 'Open seat';
+            seat.textContent = item ? '•' : '';
+            seats.appendChild(seat);
           }
-        } catch (e) {
-          console.error('autoSeed error', e);
-        }
+          box.appendChild(seats);
+          container.appendChild(box);
+        });
       }
 
-      // Render auth state
-      function renderAuthState(){ const user = currentUserLocal(); if(user){ document.getElementById('authPanel').classList.add('hidden'); document.getElementById('appPanel').classList.remove('hidden'); } else { document.getElementById('authPanel').classList.remove('hidden'); document.getElementById('appPanel').classList.add('hidden'); } renderAll(); }
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
 
-      // Helpers
-      function currentUserLocal(){ const users = readUsersLocal(); const name = localStorage.getItem(ACTIVE_KEY); return users[name]||null; }
-      function readUsersLocal(){ try{return JSON.parse(localStorage.getItem(AUTH_KEY)||'{}')}catch{return{}} }
-      function writeUsersLocal(u){ localStorage.setItem(AUTH_KEY,JSON.stringify(u)); }
+      function serviceLabel(id) {
+        return id === '1' ? '1st service' : id === '2' ? '2nd service' : '3rd service';
+      }
 
-      // Event wiring
+      async function renderAttendance() {
+        const data = await readJSON(DATA_KEY, { services: {}, attendees: [] });
+        const tbody = document.getElementById('attendanceBody');
+        tbody.innerHTML = '';
+        const filterText = (document.getElementById('searchInput').value || '').toLowerCase();
+        const serviceFilter = document.getElementById('serviceFilter').value;
+
+        const rows = (data.attendees || []).filter((a) => {
+          const hay = `${a.name} ${a.level} ${a.by}`.toLowerCase();
+          const okText = !filterText || hay.includes(filterText);
+          const okService = serviceFilter === 'all' || a.service === serviceFilter;
+          return okText && okService;
+        });
+
+        if (!rows.length) {
+          const tr = document.createElement('tr');
+          const td = document.createElement('td');
+          td.colSpan = 5;
+          td.textContent = 'No attendees';
+          td.className = 'muted';
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+
+        rows.forEach((r) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${escapeHtml(r.name)}</td>
+            <td>${escapeHtml(r.level)}</td>
+            <td>${escapeHtml(serviceLabel(r.service))}</td>
+            <td>${escapeHtml(r.by || '')}</td>
+            <td>${currentUserLocal() && currentUserLocal().role === 'admin' ? '<button class="secondary" type="button">Remove</button>' : '—'}</td>
+          `;
+          tbody.appendChild(tr);
+
+          if (currentUserLocal() && currentUserLocal().role === 'admin') {
+            const button = tr.querySelector('button');
+            button.addEventListener('click', () => removeAttendee(r.name, r.level, r.service));
+          }
+        });
+      }
+
+      async function renderAll() {
+        const data = await seedDefaultData();
+        renderTabs(data);
+        renderServiceForm(data);
+        await renderCounters(data);
+        renderMap(data);
+        await renderAttendance();
+        const user = currentUserLocal();
+        document.getElementById('whoLabel').textContent = user ? user.displayName : 'Guest';
+        document.getElementById('roleLabel').textContent = user ? `Role: ${user.role}` : 'Role: guest';
+      }
+
+      async function register() {
+        const user = currentUserLocal();
+        if (!user) { setStatus('regStatus', 'Login first', 'error'); return; }
+        const name = document.getElementById('regName').value.trim();
+        const level = document.getElementById('regLevel').value;
+        const service = document.getElementById('regService').value;
+        if (!name) { setStatus('regStatus', 'Enter attendee name', 'error'); return; }
+
+        const data = await seedDefaultData();
+        const svc = data.services[service];
+        const keyMap = { Clergy: 'clergy', Leader: 'leaders', VIP: 'vip', Member: 'members' };
+        const key = keyMap[level];
+        const arr = svc.seats[key] || [];
+        const freeIndex = arr.findIndex((seat) => seat === null || seat === undefined);
+        if (freeIndex === -1) {
+          setStatus('regStatus', `${level} is full`, 'error');
+          return;
+        }
+
+        arr[freeIndex] = { name, by: user.username };
+        svc.seats[key] = arr;
+        data.attendees.push({ name, level, service, by: user.username, seatIndex: freeIndex });
+        await writeJSON(DATA_KEY, data);
+        document.getElementById('regName').value = '';
+        setStatus('regStatus', `${name} registered`, 'success');
+        await renderAll();
+      }
+
+      async function removeAttendee(name, level, service) {
+        const user = currentUserLocal();
+        if (!user || user.role !== 'admin') {
+          alert('Only admin can remove attendees');
+          return;
+        }
+
+        const data = await seedDefaultData();
+        const svc = data.services[service];
+        const keyMap = { Clergy: 'clergy', Leader: 'leaders', VIP: 'vip', Member: 'members' };
+        const key = keyMap[level];
+        const arr = svc.seats[key] || [];
+        const idx = arr.findIndex((seat) => seat && seat.name === name);
+        if (idx >= 0) arr[idx] = null;
+        svc.seats[key] = arr;
+        data.attendees = data.attendees.filter((a) => !(a.name === name && a.level === level && a.service === service));
+        await writeJSON(DATA_KEY, data);
+        await renderAll();
+      }
+
+      async function saveService() {
+        const data = await seedDefaultData();
+        const svc = data.services[activeService];
+        const name = document.getElementById('serviceName').value.trim();
+        let cap = Number(document.getElementById('serviceCapacity').value || 200);
+        cap = Math.min(Math.max(cap, 100), 1000);
+        const clergy = Number(document.getElementById('pctClergy').value || 0);
+        const leaders = Number(document.getElementById('pctLeaders').value || 0);
+        const vip = Number(document.getElementById('pctVip').value || 0);
+
+        if (clergy + leaders + vip > 100) {
+          setStatus('serviceStatus', 'Percentages must not exceed 100', 'error');
+          return;
+        }
+
+        svc.name = name || svc.name;
+        svc.capacity = cap;
+        svc.allocations = { clergy, leaders, vip, members: 100 - clergy - leaders - vip };
+
+        const totals = calcTotals(svc);
+        ['clergy','leaders','vip','members'].forEach((key) => {
+          const arr = svc.seats[key] || [];
+          if (arr.length < totals[key]) {
+            svc.seats[key] = arr.concat(new Array(totals[key] - arr.length).fill(null));
+          } else if (arr.length > totals[key]) {
+            svc.seats[key] = arr.slice(0, totals[key]);
+          }
+        });
+
+        await writeJSON(DATA_KEY, data);
+        setStatus('serviceStatus', 'Saved', 'success');
+        await renderAll();
+      }
+
+      async function clearService() {
+        const user = currentUserLocal();
+        if (!user || user.role !== 'admin') {
+          setStatus('serviceStatus', 'Admin only', 'error');
+          return;
+        }
+        if (!confirm('Clear all attendees for this service?')) return;
+
+        const data = await seedDefaultData();
+        const svc = data.services[activeService];
+        Object.keys(svc.seats).forEach((key) => { svc.seats[key] = new Array((svc.seats[key] || []).length).fill(null); });
+        data.attendees = (data.attendees || []).filter((a) => a.service !== activeService);
+        await writeJSON(DATA_KEY, data);
+        setStatus('serviceStatus', 'Cleared', 'success');
+        await renderAll();
+      }
+
+      async function exportCsv() {
+        const data = await readJSON(DATA_KEY, { services: {}, attendees: [] });
+        const rows = data.attendees || [];
+        if (!rows.length) {
+          setStatus('serviceStatus', 'No attendees to export', 'error');
+          return;
+        }
+        const csv = [['Name','Level','Service','RegisteredBy']]
+          .concat(rows.map((r) => [r.name, r.level, r.service, r.by].map((v) => `"${String(v || '').replace(/"/g, '""')}"`).join(',')))
+          .join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = 'attendance.csv';
+        anchor.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function setupAdmin() {
+        const displayName = document.getElementById('displayName').value.trim();
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        const confirm = document.getElementById('confirmPassword').value;
+
+        if (!displayName || !username || !password) {
+          setStatus('setupStatus', 'Please complete all fields', 'error');
+          return;
+        }
+        if (password.length < 6) {
+          setStatus('setupStatus', 'Password must be at least 6 characters', 'error');
+          return;
+        }
+        if (password !== confirm) {
+          setStatus('setupStatus', 'Passwords do not match', 'error');
+          return;
+        }
+
+        const users = readUsersLocal();
+        users[username] = { username, displayName, password, role: 'admin' };
+        writeUsersLocal(users);
+        localStorage.setItem(ACTIVE_KEY, username);
+        setStatus('setupStatus', 'Admin created successfully', 'success');
+        renderAuthState();
+      }
+
+      function login() {
+        const username = document.getElementById('loginUser').value.trim();
+        const password = document.getElementById('loginPass').value;
+        const users = readUsersLocal();
+
+        if (!users[username] || users[username].password !== password) {
+          setStatus('loginStatus', 'Invalid username or password', 'error');
+          return;
+        }
+
+        localStorage.setItem(ACTIVE_KEY, username);
+        setStatus('loginStatus', 'Logged in', 'success');
+        renderAuthState();
+      }
+
+      function demoLogin() {
+        const users = readUsersLocal();
+        users.admin = users.admin || { username: 'admin', displayName: 'Admin', password: 'admin123', role: 'admin' };
+        writeUsersLocal(users);
+        localStorage.setItem(ACTIVE_KEY, 'admin');
+        renderAuthState();
+      }
+
+      function logout() {
+        localStorage.removeItem(ACTIVE_KEY);
+        renderAuthState();
+      }
+
+      function createDemoUsers() {
+        const users = readUsersLocal();
+        for (let i = 1; i <= 5; i++) {
+          const id = 'user' + String(i).padStart(2, '0');
+          if (!users[id]) users[id] = { username: id, displayName: 'User ' + i, password: 'demo123', role: 'user' };
+        }
+        writeUsersLocal(users);
+        setStatus('loginStatus', 'Demo users created: user01..user05 / demo123', 'success');
+      }
+
+      async function resetAll() {
+        if (!confirm('Reset everything?')) return;
+        localStorage.removeItem(AUTH_KEY);
+        localStorage.removeItem(DATA_KEY);
+        localStorage.removeItem(ACTIVE_KEY);
+        await seedDefaultData();
+        renderAuthState();
+      }
+
+      async function addSampleSeats() {
+        const data = await seedDefaultData();
+        const svc = data.services['2'];
+        const sample = [
+          { name: 'Faith Miles', level: 'Member', by: 'user03' },
+          { name: 'Aiden Ross', level: 'Member', by: 'user03' },
+          { name: 'Harper Cole', level: 'VIP', by: 'user02' },
+          { name: 'Maya Hunt', level: 'Leader', by: 'user01' },
+          { name: 'Noah Bell', level: 'Clergy', by: 'admin' }
+        ];
+
+        sample.forEach((person) => {
+          const keyMap = { Clergy: 'clergy', Leader: 'leaders', VIP: 'vip', Member: 'members' };
+          const key = keyMap[person.level];
+          const arr = svc.seats[key] || [];
+          const idx = arr.findIndex((seat) => seat === null || seat === undefined);
+          if (idx >= 0) {
+            arr[idx] = { name: person.name, by: person.by };
+            data.attendees.push({ name: person.name, level: person.level, service: '2', by: person.by, seatIndex: idx });
+          }
+        });
+
+        svc.seats[keyMap[sample[0].level]] = svc.seats[keyMap[sample[0].level]] || [];
+        await writeJSON(DATA_KEY, data);
+        await renderAll();
+      }
+
+      function renderAuthState() {
+        const user = currentUserLocal();
+        const authPanel = document.getElementById('authPanel');
+        const appPanel = document.getElementById('appPanel');
+        if (user) {
+          authPanel.classList.add('hidden');
+          appPanel.classList.remove('hidden');
+        } else {
+          authPanel.classList.remove('hidden');
+          appPanel.classList.add('hidden');
+        }
+        renderAll();
+      }
+
+      async function seedDemoData() {
+        const users = readUsersLocal();
+        if (!users.admin) {
+          users.admin = { username: 'admin', displayName: 'Admin', password: 'admin123', role: 'admin' };
+        }
+        for (let i = 1; i <= 5; i++) {
+          const id = 'user' + String(i).padStart(2, '0');
+          if (!users[id]) users[id] = { username: id, displayName: 'User ' + i, password: 'demo123', role: 'user' };
+        }
+        writeUsersLocal(users);
+        const data = await seedDefaultData();
+        data.attendees = [
+          { name: 'Alice Johnson', level: 'Clergy', service: '1', by: 'admin' },
+          { name: 'Samuel Peters', level: 'Leader', service: '1', by: 'user01' },
+          { name: 'Grace Lee', level: 'VIP', service: '1', by: 'user02' },
+          { name: 'David Brown', level: 'Member', service: '2', by: 'user03' },
+          { name: 'Emma Wilson', level: 'Member', service: '3', by: 'user04' }
+        ];
+
+        const keyMap = { Clergy: 'clergy', Leader: 'leaders', VIP: 'vip', Member: 'members' };
+        for (const attendee of data.attendees) {
+          const svc = data.services[attendee.service];
+          const key = keyMap[attendee.level];
+          const arr = svc.seats[key] || [];
+          const idx = arr.findIndex((seat) => seat === null || seat === undefined);
+          if (idx >= 0) {
+            arr[idx] = { name: attendee.name, by: attendee.by };
+            svc.seats[key] = arr;
+          }
+        }
+        await writeJSON(DATA_KEY, data);
+        localStorage.setItem(ACTIVE_KEY, 'admin');
+        setStatus('regStatus', 'Demo data populated', 'success');
+        await renderAll();
+      }
+
+      async function runPresentationMode() {
+        if (!confirm('This will seed a presentation-ready demo state. Continue?')) return;
+        await seedDemoData();
+        const extra = [
+          { name: 'John Anderson', level: 'Member', service: '1', by: 'user02' },
+          { name: 'Miriam Chan', level: 'VIP', service: '2', by: 'user01' },
+          { name: 'Ariana Scott', level: 'Leader', service: '3', by: 'admin' },
+          { name: 'Leo Morris', level: 'Clergy', service: '2', by: 'admin' }
+        ];
+
+        const data = await readJSON(DATA_KEY, { services: {}, attendees: [] });
+        const keyMap = { Clergy: 'clergy', Leader: 'leaders', VIP: 'vip', Member: 'members' };
+        extra.forEach((attendee) => {
+          const svc = data.services[attendee.service];
+          const key = keyMap[attendee.level];
+          const arr = svc.seats[key] || [];
+          const idx = arr.findIndex((seat) => seat === null || seat === undefined);
+          if (idx >= 0) {
+            arr[idx] = { name: attendee.name, by: attendee.by };
+            svc.seats[key] = arr;
+            data.attendees.push({ name: attendee.name, level: attendee.level, service: attendee.service, by: attendee.by, seatIndex: idx });
+          }
+        });
+        await writeJSON(DATA_KEY, data);
+        setStatus('regStatus', 'Presentation mode ready', 'success');
+        await renderAll();
+      }
+
       document.getElementById('setupSubmit').addEventListener('click', setupAdmin);
-      document.getElementById('gotoLogin').addEventListener('click', ()=>document.getElementById('loginUser').focus());
+      document.getElementById('gotoLogin').addEventListener('click', () => document.getElementById('loginUser').focus());
       document.getElementById('loginBtn').addEventListener('click', login);
       document.getElementById('demoLogin').addEventListener('click', demoLogin);
       document.getElementById('logoutBtn').addEventListener('click', logout);
       document.getElementById('saveService').addEventListener('click', saveService);
       document.getElementById('clearService').addEventListener('click', clearService);
       document.getElementById('registerBtn').addEventListener('click', register);
-      document.getElementById('seedDemo').addEventListener('click', seedSampleData);
+      document.getElementById('seedDemo').addEventListener('click', seedDemoData);
       document.getElementById('createUsers').addEventListener('click', createDemoUsers);
       document.getElementById('resetAll').addEventListener('click', resetAll);
       document.getElementById('addSampleSeats').addEventListener('click', addSampleSeats);
       document.getElementById('exportCsv').addEventListener('click', exportCsv);
-      document.getElementById('printList').addEventListener('click', ()=>window.print());
+      document.getElementById('printList').addEventListener('click', () => window.print());
       document.getElementById('searchInput').addEventListener('input', renderAttendance);
       document.getElementById('serviceFilter').addEventListener('change', renderAttendance);
+      document.getElementById('presentationBtn').addEventListener('click', runPresentationMode);
 
-      // Initialize
-      seedDefaultData().then(async ()=>{ await autoSeedForPresentation(); renderAuthState(); });
-
+      (async function init() {
+        const savedConfig = readLocal(FIREBASE_CONFIG_KEY, null);
+        if (savedConfig) {
+          try {
+            const { initializeApp } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js');
+            const { getFirestore } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js');
+            const app = initializeApp(savedConfig);
+            firestore = getFirestore(app);
+            useFirestore = true;
+          } catch (e) { console.error('firebase init failed', e); }
+        }
+        await seedDefaultData();
+        const users = readUsersLocal();
+        if (!Object.keys(users).length) {
+          users.admin = { username: 'admin', displayName: 'Admin', password: 'admin123', role: 'admin' };
+          for (let i = 1; i <= 5; i++) {
+            const id = 'user' + String(i).padStart(2, '0');
+            users[id] = { username: id, displayName: 'User ' + i, password: 'demo123', role: 'user' };
+          }
+          writeUsersLocal(users);
+          localStorage.setItem(ACTIVE_KEY, 'admin');
+        }
+        await seedDemoData();
+        renderAuthState();
+      })();
     </script>
   </body>
 </html>
